@@ -320,13 +320,11 @@ async function findFile() {
   const cached = localStorage.getItem('bilancio_fileId');
   if (cached) { fileId = cached; return; }
   try {
-    const r = await graph(`/me/drive/root/children?$top=100`);
+    // Cerca direttamente nella cartella Documenti
+    const r = await graph(`/me/drive/root:/Documenti:/children?$top=100`);
     const f = (r.value||[]).find(f => f.name && f.name.toLowerCase().includes('bilancio spese2'));
     if (f) { fileId = f.id; localStorage.setItem('bilancio_fileId', fileId); return; }
-    const r2 = await graph(`/me/drive/root/search(q='Bilancio spese2')`);
-    const f2 = (r2.value||[]).find(f => f.name && f.name.toLowerCase().includes('bilancio spese2'));
-    if (f2) { fileId = f2.id; localStorage.setItem('bilancio_fileId', fileId); return; }
-    console.warn('File non trovato.');
+    console.warn('File non trovato in Documenti.');
   } catch(e) { console.error('findFile error:', e); }
 }
 
