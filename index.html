@@ -135,7 +135,7 @@
     /* ── BOTTOM NAV ── */
     .bottom-nav {
       position: fixed; bottom: 0; left: 0; right: 0;
-      display: grid; grid-template-columns: 1fr 1fr;
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
       background: rgba(13,13,13,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
       border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); z-index: 100;
     }
@@ -210,12 +210,25 @@
     <div id="dash-content"><div class="loading-state"><div class="spin"></div> Caricamento...</div></div>
   </div>
 
+  <!-- NUOVO MESE -->
+  <div id="tab-mese" class="tab-content hidden">
+    <div class="field">
+      <label>Mese da creare</label>
+      <input type="month" id="inp-mese">
+    </div>
+    <div id="mese-status"></div>
+    <button class="btn-submit entrata" id="btn-crea-mese" onclick="creaMese()">Crea nuovo mese</button>
+  </div>
+
   <nav class="bottom-nav">
     <button class="nav-btn active" id="nav-form" onclick="switchTab('form')">
       <span class="nav-icon">＋</span><span>Inserisci</span>
     </button>
     <button class="nav-btn" id="nav-dash" onclick="switchTab('dash')">
       <span class="nav-icon">◉</span><span>Dashboard</span>
+    </button>
+    <button class="nav-btn" id="nav-mese" onclick="switchTab('mese')">
+      <span class="nav-icon">📅</span><span>Nuovo mese</span>
     </button>
   </nav>
 </div>
@@ -275,6 +288,9 @@ function showApp() {
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('main-app').classList.remove('hidden');
   document.getElementById('inp-data').value = new Date().toISOString().split('T')[0];
+  // Default nuovo mese = mese prossimo
+  const nextMonth = new Date(); nextMonth.setMonth(nextMonth.getMonth()+1);
+  document.getElementById('inp-mese').value = nextMonth.toISOString().slice(0,7);
   setTipo('Uscita');
   findFile();
   const savedTab = localStorage.getItem('bilancio_tab') || 'form';
@@ -349,6 +365,9 @@ async function submitForm() {
     document.getElementById('inp-importo').value = '';
     document.getElementById('inp-desc').value = '';
     document.getElementById('inp-data').value = new Date().toISOString().split('T')[0];
+  // Default nuovo mese = mese prossimo
+  const nextMonth = new Date(); nextMonth.setMonth(nextMonth.getMonth()+1);
+  document.getElementById('inp-mese').value = nextMonth.toISOString().slice(0,7);
     toast('✓ Salvato');
   } catch(e) {
     console.error(e);
@@ -361,10 +380,10 @@ async function submitForm() {
 
 // ── TAB ───────────────────────────────────────────────────────
 function switchTab(tab) {
-  document.getElementById('tab-form').classList.toggle('hidden', tab!=='form');
-  document.getElementById('tab-dash').classList.toggle('hidden', tab!=='dash');
-  document.getElementById('nav-form').classList.toggle('active', tab==='form');
-  document.getElementById('nav-dash').classList.toggle('active', tab==='dash');
+  ['form','dash','mese'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab);
+    document.getElementById('nav-'+t).classList.toggle('active', t===tab);
+  });
   localStorage.setItem('bilancio_tab', tab);
   if (tab==='dash') loadDashboard();
 }
@@ -382,8 +401,12 @@ async function loadDashboard() {
   const fmt = n => n.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   try {
-    // 1. Leggi Tbl_Input per actual del mese corrente
-    const inputData = await graph(`/me/drive/items/${fileId}/workbook/tables/Tbl_Input/rows`);
+    // 1. Chiamate in parallelo
+    const [inputData, sheetDataRaw] = await Promise.all([
+      graph(`/me/drive/items/${fileId}/workbook/tables/Tbl_Input/rows`),
+      graph(`/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(sheetName)}')/usedRange`).catch(() => null)
+    ]);
+    const _inputData = inputData;
     // Parse date robustly: handles ISO string, Excel serial number, or date-only string
     function parseExcelDate(val) {
       if (!val) return null;
@@ -416,12 +439,10 @@ async function loadDashboard() {
     const totUsciteActual = Object.values(actualMap).reduce((s,v)=>s+v,0);
     const saldoAttuale = totEntrate - totUsciteActual;
 
-    // 2. Leggi Expected dal foglio del mese corrente
+    // 2. Expected dal foglio del mese (già caricato in parallelo)
     let expectedMap = {};
-    try {
-      const sheetData = await graph(`/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(sheetName)}')/usedRange`);
-      const vals = sheetData.values || [];
-      // Cerca righe con nome categoria nella col A e expected in col B
+    if (sheetDataRaw) {
+      const vals = sheetDataRaw.values || [];
       vals.forEach(row => {
         const nome = (row[0]||'').toString().trim();
         const exp  = parseFloat(row[1]);
@@ -429,8 +450,8 @@ async function loadDashboard() {
           expectedMap[nome] = exp;
         }
       });
-    } catch(e) {
-      console.warn(`Foglio "${sheetName}" non trovato. Expected non disponibili.`);
+    } else {
+      console.warn(`Foglio "${sheetName}" non trovato.`);
     }
 
     // 3. Calcola mancanti
@@ -497,6 +518,60 @@ async function loadDashboard() {
   } catch(e) {
     console.error(e);
     c.innerHTML = `<div class="empty-state">Errore nel caricamento.<br><small>${e.message}</small></div>`;
+  }
+}
+
+// ── CREA MESE ─────────────────────────────────────────────────
+async function creaMese() {
+  const meseVal = document.getElementById('inp-mese').value;
+  if (!meseVal) { alert('Seleziona un mese.'); return; }
+  if (!fileId) { alert('File non trovato.'); return; }
+
+  const [anno, mese] = meseVal.split('-').map(Number);
+  const MESI_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const nomeNuovo = MESI_IT[mese-1] + ' ' + anno;
+  const dataB2 = new Date(anno, mese-1, 1).toISOString().split('T')[0];
+
+  const btn = document.getElementById('btn-crea-mese');
+  const status = document.getElementById('mese-status');
+  btn.disabled = true; btn.textContent = 'Creazione in corso...';
+  status.innerHTML = '';
+
+  try {
+    // 1. Verifica che il foglio non esista già
+    const sheets = await graph(`/me/drive/items/${fileId}/workbook/worksheets`);
+    const exists = (sheets.value||[]).find(s => s.name === nomeNuovo);
+    if (exists) {
+      status.innerHTML = `<div class="empty-state" style="color:var(--warn)">Il foglio "${nomeNuovo}" esiste già.</div>`;
+      return;
+    }
+
+    // 2. Copia il foglio Template
+    await graph(`/me/drive/items/${fileId}/workbook/worksheets/Template/copy`, {
+      method: 'POST',
+      body: JSON.stringify({ name: nomeNuovo, index: sheets.value.length })
+    });
+
+    // 3. Imposta la data B2 nel nuovo foglio
+    await graph(`/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(nomeNuovo)}')/range(address='B2')`, {
+      method: 'PATCH',
+      body: JSON.stringify({ values: [[dataB2]] })
+    });
+
+    // 4. Imposta il nome B1
+    await graph(`/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(nomeNuovo)}')/range(address='B1')`, {
+      method: 'PATCH',
+      body: JSON.stringify({ values: [[nomeNuovo]] })
+    });
+
+    status.innerHTML = `<div class="empty-state" style="color:var(--primary)">✓ Foglio "${nomeNuovo}" creato!</div>`;
+    toast('✓ ' + nomeNuovo + ' creato');
+  } catch(e) {
+    console.error(e);
+    status.innerHTML = `<div class="empty-state" style="color:var(--danger)">Errore: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Crea nuovo mese';
   }
 }
 
