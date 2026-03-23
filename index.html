@@ -549,7 +549,7 @@ async function creaMese() {
     // 2. Copia il foglio Template
     await graph(`/me/drive/items/${fileId}/workbook/worksheets('Template')/copy`, {
       method: 'POST',
-      body: JSON.stringify({ name: nomeNuovo, index: sheets.value.length })
+      body: JSON.stringify({ name: nomeNuovo, positionType: 'End', relativeTo: null })
     });
 
     // 3. Imposta la data B2 nel nuovo foglio
