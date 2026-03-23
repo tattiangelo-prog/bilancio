@@ -304,7 +304,15 @@ async function graph(path, opts={}) {
     ...opts,
     headers: { 'Authorization':'Bearer '+token, 'Content-Type':'application/json', ...opts.headers }
   });
-  if (!res.ok) { const e = await res.text(); throw new Error(`Graph ${res.status}: ${e}`); }
+  if (!res.ok) {
+    const e = await res.text();
+    // Se 404 su un item, pulisci la cache del fileId e forza ri-ricerca
+    if (res.status === 404 && path.includes('/items/')) {
+      localStorage.removeItem('bilancio_fileId');
+      fileId = null;
+    }
+    throw new Error(`Graph ${res.status}: ${e}`);
+  }
   return res.json();
 }
 
@@ -367,7 +375,8 @@ function switchTab(tab) {
 async function loadDashboard() {
   const c = document.getElementById('dash-content');
   c.innerHTML = '<div class="loading-state"><div class="spin"></div> Caricamento dati...</div>';
-  if (!fileId) { c.innerHTML = '<div class="empty-state">File non trovato su OneDrive.</div>'; return; }
+  if (!fileId) { await findFile(); }
+  if (!fileId) { c.innerHTML = '<div class="empty-state">File non trovato su OneDrive.<br><small>Verifica che si chiami "Bilancio spese2.xlsx"</small></div>'; return; }
 
   const now = new Date();
   const sheetName = nomeMese(now);
