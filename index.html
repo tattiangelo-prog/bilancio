@@ -277,6 +277,8 @@ function showApp() {
   document.getElementById('inp-data').value = new Date().toISOString().split('T')[0];
   setTipo('Uscita');
   findFile();
+  const savedTab = localStorage.getItem('bilancio_tab') || 'form';
+  switchTab(savedTab);
 }
 
 // ── TIPO ─────────────────────────────────────────────────────
@@ -307,11 +309,16 @@ async function graph(path, opts={}) {
 }
 
 async function findFile() {
+  const cached = localStorage.getItem('bilancio_fileId');
+  if (cached) { fileId = cached; return; }
   try {
-    const r = await graph(`/me/drive/root/search(q='Bilancio spese2')`);
+    const r = await graph(`/me/drive/root/children?$top=100`);
     const f = (r.value||[]).find(f => f.name && f.name.toLowerCase().includes('bilancio spese2'));
-    if (f) fileId = f.id;
-    else console.warn('File "Bilancio spese2" non trovato su OneDrive.');
+    if (f) { fileId = f.id; localStorage.setItem('bilancio_fileId', fileId); return; }
+    const r2 = await graph(`/me/drive/root/search(q='Bilancio spese2')`);
+    const f2 = (r2.value||[]).find(f => f.name && f.name.toLowerCase().includes('bilancio spese2'));
+    if (f2) { fileId = f2.id; localStorage.setItem('bilancio_fileId', fileId); return; }
+    console.warn('File non trovato.');
   } catch(e) { console.error('findFile error:', e); }
 }
 
@@ -352,6 +359,7 @@ function switchTab(tab) {
   document.getElementById('tab-dash').classList.toggle('hidden', tab!=='dash');
   document.getElementById('nav-form').classList.toggle('active', tab==='form');
   document.getElementById('nav-dash').classList.toggle('active', tab==='dash');
+  localStorage.setItem('bilancio_tab', tab);
   if (tab==='dash') loadDashboard();
 }
 
@@ -369,10 +377,23 @@ async function loadDashboard() {
   try {
     // 1. Leggi Tbl_Input per actual del mese corrente
     const inputData = await graph(`/me/drive/items/${fileId}/workbook/tables/Tbl_Input/rows`);
+    // Parse date robustly: handles ISO string, Excel serial number, or date-only string
+    function parseExcelDate(val) {
+      if (!val) return null;
+      // Excel serial number (number of days since 1900-01-01)
+      if (typeof val === 'number') {
+        const d = new Date(Date.UTC(1899,11,30) + val * 86400000);
+        return d;
+      }
+      // ISO string or date string
+      const d = new Date(val);
+      return isNaN(d) ? null : d;
+    }
+
     const rows = (inputData.value||[]).map(r => r.values[0]).filter(r => {
-      if (!r || !r[1]) return false;
-      const d = new Date(r[1]);
-      return !isNaN(d) && d.getMonth()===cm && d.getFullYear()===cy;
+      if (!r || r[1] === null || r[1] === undefined || r[1] === '') return false;
+      const d = parseExcelDate(r[1]);
+      return d && d.getMonth()===cm && d.getFullYear()===cy;
     });
 
     // Calcola actual per categoria
