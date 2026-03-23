@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Bilancio</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bilancio">
+  <meta name="theme-color" content="#0d0d0d">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d0d0d; --bg2: #141414; --surface: #1a1a1a; --surface2: #242424;
+      --border: #2a2a2a; --primary: #c8f135; --primary-dim: rgba(200,241,53,0.12);
+      --danger: #ff4d4d; --danger-dim: rgba(255,77,77,0.12);
+      --warn: #f5a623; --warn-dim: rgba(245,166,35,0.12);
+      --text: #f0f0f0; --text-muted: #666;
+      --mono: 'DM Mono', monospace; --sans: 'DM Sans', sans-serif; --r: 14px;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; min-height: 100dvh; }
+    .hidden { display: none !important; }
+
+    /* ── LOGIN ── */
+    #login-screen {
+      min-height: 100vh; min-height: 100dvh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 2rem; gap: 2rem;
+      background: radial-gradient(ellipse at 30% 20%, rgba(200,241,53,0.06), transparent 60%),
+                  radial-gradient(ellipse at 80% 80%, rgba(200,241,53,0.04), transparent 50%), var(--bg);
+    }
+    .login-wordmark { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--text-muted); }
+    .login-amount { font-family: var(--mono); font-size: clamp(3.5rem,15vw,5rem); font-weight: 400; color: var(--primary); line-height: 1; letter-spacing: -0.02em; }
+    .login-tagline { font-size: 0.95rem; color: var(--text-muted); text-align: center; max-width: 240px; line-height: 1.5; }
+    .btn-login {
+      background: var(--primary); color: #0d0d0d; border: none; padding: 1rem 2.5rem;
+      border-radius: 100px; font-family: var(--sans); font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; width: 100%; max-width: 280px; transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn-login:active { opacity: 0.8; transform: scale(0.98); }
+
+    /* ── APP ── */
+    #main-app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+    .app-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: max(env(safe-area-inset-top),14px) 20px 14px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .header-logo { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.2em; color: var(--primary); text-transform: uppercase; }
+    .btn-logout {
+      background: transparent; color: var(--text-muted); border: 1px solid var(--border);
+      padding: 0.35rem 0.8rem; border-radius: 100px; font-family: var(--sans); font-size: 0.75rem; cursor: pointer;
+    }
+
+    .tab-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 1.5rem 1.25rem; padding-bottom: calc(72px + env(safe-area-inset-bottom) + 1rem); }
+
+    /* ── FORM ── */
+    .tipo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1.25rem; }
+    .tipo-pill {
+      padding: 0.875rem; border-radius: 100px; border: 1.5px solid var(--border);
+      background: transparent; color: var(--text-muted); font-family: var(--sans);
+      font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .tipo-pill.sel-uscita  { border-color: var(--danger);  background: var(--danger-dim);  color: var(--danger);  }
+    .tipo-pill.sel-entrata { border-color: var(--primary); background: var(--primary-dim); color: var(--primary); }
+
+    .field { margin-bottom: 1.1rem; }
+    .field label { display: block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .field input, .field select {
+      width: 100%; background: var(--surface); border: 1.5px solid var(--border);
+      color: var(--text); padding: 0.9rem 1rem; border-radius: var(--r);
+      font-family: var(--sans); font-size: 1rem; outline: none; appearance: none; -webkit-appearance: none;
+      transition: border-color 0.15s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--primary); }
+    .field input[type="number"] { font-family: var(--mono); font-size: 1.15rem; }
+    .field input::placeholder { color: var(--text-muted); }
+    .select-wrap { position: relative; }
+    .select-wrap::after { content: '›'; position: absolute; right: 1rem; top: 50%; transform: translateY(-50%) rotate(90deg); color: var(--text-muted); pointer-events: none; font-size: 1.2rem; }
+
+    .btn-submit {
+      width: 100%; padding: 1.1rem; border-radius: 100px; border: none;
+      font-family: var(--sans); font-size: 1rem; font-weight: 700; cursor: pointer;
+      margin-top: 0.75rem; transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn-submit.uscita  { background: var(--danger);  color: white; }
+    .btn-submit.entrata { background: var(--primary); color: #0d0d0d; }
+    .btn-submit:disabled { opacity: 0.4; }
+    .btn-submit:active:not(:disabled) { opacity: 0.85; transform: scale(0.98); }
+
+    /* ── DASHBOARD ── */
+    .dash-month { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 1.1rem; }
+
+    .saldi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem; }
+    .saldo-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 18px; padding: 1rem; position: relative; overflow: hidden;
+    }
+    .saldo-card.full { grid-column: 1/-1; padding: 1.25rem; background: linear-gradient(135deg,#1e1e1e,#141414); }
+    .saldo-card::after {
+      content: ''; position: absolute; top: -25px; right: -25px;
+      width: 80px; height: 80px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(200,241,53,0.06), transparent); pointer-events: none;
+    }
+    .saldo-label { font-size: 0.63rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
+    .saldo-val { font-family: var(--mono); font-weight: 400; letter-spacing: -0.02em; line-height: 1; font-size: 1.5rem; }
+    .saldo-card.full .saldo-val { font-size: 2.1rem; }
+    .saldo-val.pos  { color: var(--primary); }
+    .saldo-val.neg  { color: var(--danger);  }
+    .saldo-val.warn { color: var(--warn);    }
+    .saldo-sub { font-size: 0.63rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+    .section-header { display: flex; justify-content: space-between; align-items: baseline; margin: 1.1rem 0 0.6rem; }
+    .section-label { font-size: 0.67rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+    .section-total { font-family: var(--mono); font-size: 0.75rem; color: var(--warn); }
+
+    .mancanti-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+    .mancante-row { padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .mancante-row:last-child { border-bottom: none; }
+    .mancante-row.done { opacity: 0.4; }
+    .m-left { display: flex; flex-direction: column; gap: 0.12rem; }
+    .m-name { font-size: 0.87rem; font-weight: 500; }
+    .m-progress { font-size: 0.67rem; color: var(--text-muted); font-family: var(--mono); }
+    .m-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+    .m-missing { font-family: var(--mono); font-size: 0.87rem; font-weight: 500; }
+    .m-missing.open { color: var(--warn); }
+    .m-missing.closed { color: var(--primary); }
+    .m-badge { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.05em; padding: 0.15rem 0.5rem; border-radius: 100px; }
+    .m-badge.open    { background: var(--warn-dim);    color: var(--warn);    border: 1px solid rgba(245,166,35,0.25);  }
+    .m-badge.partial { background: rgba(200,241,53,0.06); color: #a8c82a; border: 1px solid rgba(200,241,53,0.15); }
+    .m-badge.closed  { background: var(--primary-dim); color: var(--primary); border: 1px solid rgba(200,241,53,0.25); }
+
+    /* ── BOTTOM NAV ── */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      display: grid; grid-template-columns: 1fr 1fr;
+      background: rgba(13,13,13,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); z-index: 100;
+    }
+    .nav-btn {
+      background: transparent; border: none; color: var(--text-muted);
+      padding: 0.9rem 1rem 0.8rem; font-family: var(--sans); font-size: 0.75rem; font-weight: 500;
+      cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+    }
+    .nav-icon { font-size: 1.3rem; line-height: 1; }
+    .nav-btn.active { color: var(--primary); }
+
+    /* ── TOAST / LOADING ── */
+    .toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--primary); color: var(--primary);
+      padding: 0.6rem 1.25rem; border-radius: 100px; font-family: var(--mono); font-size: 0.85rem;
+      z-index: 200; animation: toastIn 0.25s ease; white-space: nowrap;
+    }
+    @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+
+    .loading-state { display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 3rem 1rem; color: var(--text-muted); font-size: 0.9rem; }
+    .spin { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-wordmark">Bilancio Personale</div>
+  <div class="login-amount">€ ___</div>
+  <p class="login-tagline">Tieni traccia delle spese direttamente dal telefono</p>
+  <button class="btn-login" id="login-btn">Accedi con Microsoft</button>
+</div>
+
+<!-- APP -->
+<div id="main-app" class="hidden">
+  <header class="app-header">
+    <span class="header-logo">Bilancio</span>
+    <button class="btn-logout" id="logout-btn">Esci</button>
+  </header>
+
+  <!-- FORM -->
+  <div id="tab-form" class="tab-content">
+    <div class="tipo-row">
+      <button class="tipo-pill sel-uscita" id="pill-u" onclick="setTipo('Uscita')">💸 Uscita</button>
+      <button class="tipo-pill" id="pill-e" onclick="setTipo('Entrata')">💰 Entrata</button>
+    </div>
+    <div class="field">
+      <label>Importo (€)</label>
+      <input type="number" id="inp-importo" placeholder="0.00" step="0.01" min="0" inputmode="decimal">
+    </div>
+    <div class="field">
+      <label>Categoria</label>
+      <div class="select-wrap"><select id="inp-cat"></select></div>
+    </div>
+    <div class="field">
+      <label>Data</label>
+      <input type="date" id="inp-data">
+    </div>
+    <div class="field">
+      <label>Descrizione <span style="font-weight:400;text-transform:none;letter-spacing:0">(opzionale)</span></label>
+      <input type="text" id="inp-desc" placeholder="Es. Fastweb marzo">
+    </div>
+    <button class="btn-submit uscita" id="btn-submit" onclick="submitForm()">Registra Uscita</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="tab-dash" class="tab-content hidden">
+    <div id="dash-content"><div class="loading-state"><div class="spin"></div> Caricamento...</div></div>
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" id="nav-form" onclick="switchTab('form')">
+      <span class="nav-icon">＋</span><span>Inserisci</span>
+    </button>
+    <button class="nav-btn" id="nav-dash" onclick="switchTab('dash')">
+      <span class="nav-icon">◉</span><span>Dashboard</span>
+    </button>
+  </nav>
+</div>
+
+<script>
+// ── PWA MANIFEST ─────────────────────────────────────────────
+const mf = { name:"Bilancio Personale", short_name:"Bilancio", start_url:"./", display:"standalone", background_color:"#0d0d0d", theme_color:"#0d0d0d", icons:[{src:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230d0d0d'/><text y='72' x='10' font-size='75'>💰</text></svg>",sizes:"512x512",type:"image/svg+xml"}] };
+const ml = document.createElement('link'); ml.rel='manifest'; ml.href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/json'})); document.head.appendChild(ml);
+
+// ── MSAL ─────────────────────────────────────────────────────
+const msalInstance = new msal.PublicClientApplication({
+  auth: {
+    clientId: "9e3b6cc6-e488-4dae-803c-204c1bba3819",
+    authority: "https://login.microsoftonline.com/common",
+    redirectUri: window.location.href.split('?')[0].replace(/#.*$/,'')
+  },
+  cache: { cacheLocation:"localStorage", storeAuthStateInCookie:true }
+});
+const SCOPES = ["User.Read","Files.ReadWrite"];
+
+// ── CATEGORIE ────────────────────────────────────────────────
+const CATS = {
+  Uscita:  ['Rate','Fisse','Da conservare','Benzina','Spesa','Varie','Bollette','Parrucchiere','Tabacchi vari','Fumo'],
+  Entrata: ['Deliveroo','Extra']
+};
+
+// Categorie con Expected nel foglio mensile (nomi esatti come in colonna A)
+const CATS_EXPECTED = ['Rate','Fisse','Da conservare','Benzina','Spesa','Varie','Bollette','Parrucchiere','Tabacchi vari','Fumo'];
+
+let tipo = 'Uscita';
+let fileId = null;
+let account = null;
+
+// ── MESI ITALIANI ────────────────────────────────────────────
+const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+function nomeMese(d) {
+  const m = MESI[d.getMonth()];
+  return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getFullYear();
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+async function init() {
+  await msalInstance.initialize();
+  try {
+    const resp = await msalInstance.handleRedirectPromise();
+    if (resp) { account = resp.account; msalInstance.setActiveAccount(account); showApp(); return; }
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) { account = accounts[0]; msalInstance.setActiveAccount(account); showApp(); return; }
+  } catch(e) { console.error(e); }
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+document.getElementById('login-btn').addEventListener('click', () => msalInstance.loginRedirect({ scopes: SCOPES }));
+document.getElementById('logout-btn').addEventListener('click', () => msalInstance.logoutRedirect());
+
+function showApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('main-app').classList.remove('hidden');
+  document.getElementById('inp-data').value = new Date().toISOString().split('T')[0];
+  setTipo('Uscita');
+  findFile();
+}
+
+// ── TIPO ─────────────────────────────────────────────────────
+function setTipo(t) {
+  tipo = t;
+  document.getElementById('pill-u').className = 'tipo-pill' + (t==='Uscita'?' sel-uscita':'');
+  document.getElementById('pill-e').className = 'tipo-pill' + (t==='Entrata'?' sel-entrata':'');
+  const btn = document.getElementById('btn-submit');
+  btn.textContent = 'Registra ' + t;
+  btn.className = 'btn-submit ' + t.toLowerCase();
+  document.getElementById('inp-cat').innerHTML = CATS[t].map(c=>`<option>${c}</option>`).join('');
+}
+
+// ── GRAPH ─────────────────────────────────────────────────────
+async function getToken() {
+  const r = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
+  return r.accessToken;
+}
+
+async function graph(path, opts={}) {
+  const token = await getToken();
+  const res = await fetch('https://graph.microsoft.com/v1.0' + path, {
+    ...opts,
+    headers: { 'Authorization':'Bearer '+token, 'Content-Type':'application/json', ...opts.headers }
+  });
+  if (!res.ok) { const e = await res.text(); throw new Error(`Graph ${res.status}: ${e}`); }
+  return res.json();
+}
+
+async function findFile() {
+  try {
+    const r = await graph(`/me/drive/root/search(q='Bilancio spese2')`);
+    const f = (r.value||[]).find(f => f.name && f.name.toLowerCase().includes('bilancio spese2'));
+    if (f) fileId = f.id;
+    else console.warn('File "Bilancio spese2" non trovato su OneDrive.');
+  } catch(e) { console.error('findFile error:', e); }
+}
+
+// ── SUBMIT ────────────────────────────────────────────────────
+async function submitForm() {
+  const data     = document.getElementById('inp-data').value;
+  const cat      = document.getElementById('inp-cat').value;
+  const importo  = parseFloat(document.getElementById('inp-importo').value);
+  const desc     = document.getElementById('inp-desc').value.trim();
+
+  if (!data || !cat || isNaN(importo) || importo <= 0) { alert('Inserisci importo e categoria.'); return; }
+  if (!fileId) { alert('File Excel non trovato su OneDrive.\nVerifica che si chiami "Bilancio spese2".'); return; }
+
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true; btn.textContent = 'Salvataggio...';
+
+  try {
+    await graph(`/me/drive/items/${fileId}/workbook/tables/Tbl_Input/rows/add`, {
+      method: 'POST',
+      body: JSON.stringify({ values: [[tipo, data, cat, importo, desc]] })
+    });
+    document.getElementById('inp-importo').value = '';
+    document.getElementById('inp-desc').value = '';
+    document.getElementById('inp-data').value = new Date().toISOString().split('T')[0];
+    toast('✓ Salvato');
+  } catch(e) {
+    console.error(e);
+    alert('Errore nel salvataggio:\n' + e.message);
+  } finally {
+    btn.disabled = false;
+    setTipo(tipo);
+  }
+}
+
+// ── TAB ───────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('tab-form').classList.toggle('hidden', tab!=='form');
+  document.getElementById('tab-dash').classList.toggle('hidden', tab!=='dash');
+  document.getElementById('nav-form').classList.toggle('active', tab==='form');
+  document.getElementById('nav-dash').classList.toggle('active', tab==='dash');
+  if (tab==='dash') loadDashboard();
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+async function loadDashboard() {
+  const c = document.getElementById('dash-content');
+  c.innerHTML = '<div class="loading-state"><div class="spin"></div> Caricamento dati...</div>';
+  if (!fileId) { c.innerHTML = '<div class="empty-state">File non trovato su OneDrive.</div>'; return; }
+
+  const now = new Date();
+  const sheetName = nomeMese(now);
+  const cm = now.getMonth(), cy = now.getFullYear();
+  const fmt = n => n.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  try {
+    // 1. Leggi Tbl_Input per actual del mese corrente
+    const inputData = await graph(`/me/drive/items/${fileId}/workbook/tables/Tbl_Input/rows`);
+    const rows = (inputData.value||[]).map(r => r.values[0]).filter(r => {
+      if (!r || !r[1]) return false;
+      const d = new Date(r[1]);
+      return !isNaN(d) && d.getMonth()===cm && d.getFullYear()===cy;
+    });
+
+    // Calcola actual per categoria
+    const actualMap = {};
+    rows.forEach(r => {
+      if (r[0]==='Uscita') {
+        const cat = r[2]||'Altro';
+        actualMap[cat] = (actualMap[cat]||0) + (parseFloat(r[3])||0);
+      }
+    });
+
+    const totEntrate = rows.filter(r=>r[0]==='Entrata').reduce((s,r)=>s+(parseFloat(r[3])||0),0);
+    const totUsciteActual = Object.values(actualMap).reduce((s,v)=>s+v,0);
+    const saldoAttuale = totEntrate - totUsciteActual;
+
+    // 2. Leggi Expected dal foglio del mese corrente
+    let expectedMap = {};
+    try {
+      const sheetData = await graph(`/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(sheetName)}')/usedRange`);
+      const vals = sheetData.values || [];
+      // Cerca righe con nome categoria nella col A e expected in col B
+      vals.forEach(row => {
+        const nome = (row[0]||'').toString().trim();
+        const exp  = parseFloat(row[1]);
+        if (CATS_EXPECTED.includes(nome) && !isNaN(exp) && exp > 0) {
+          expectedMap[nome] = exp;
+        }
+      });
+    } catch(e) {
+      console.warn(`Foglio "${sheetName}" non trovato. Expected non disponibili.`);
+    }
+
+    // 3. Calcola mancanti
+    const mancanti = CATS_EXPECTED
+      .filter(cat => expectedMap[cat] > 0)
+      .map(cat => ({
+        cat,
+        expected: expectedMap[cat] || 0,
+        actual:   actualMap[cat]   || 0,
+        mancante: Math.max(0, (expectedMap[cat]||0) - (actualMap[cat]||0))
+      }));
+
+    const totMancanti = mancanti.reduce((s,m)=>s+m.mancante,0);
+    const saldoPrevisto = saldoAttuale - totMancanti;
+
+    // 4. Render
+    const mancantiHtml = mancanti.length === 0
+      ? '<div class="empty-state">Nessun dato Expected trovato.<br><small>Verifica che il foglio "'+sheetName+'" esista.</small></div>'
+      : `<div class="mancanti-card">` + mancanti.map(m => {
+          const done = m.mancante === 0;
+          const partial = m.actual > 0 && m.mancante > 0;
+          const badge = done ? 'closed' : (partial ? 'partial' : 'open');
+          const label = done ? 'SALDATO' : (partial ? 'PARZIALE' : 'DA PAGARE');
+          return `
+            <div class="mancante-row ${done?'done':''}">
+              <div class="m-left">
+                <span class="m-name">${m.cat}</span>
+                <span class="m-progress">€ ${fmt(m.actual)} / € ${fmt(m.expected)}</span>
+              </div>
+              <div class="m-right">
+                <span class="m-missing ${done?'closed':'open'}">${done ? '✓ € 0' : '− € '+fmt(m.mancante)}</span>
+                <span class="m-badge ${badge}">${label}</span>
+              </div>
+            </div>`;
+        }).join('') + `</div>`;
+
+    c.innerHTML = `
+      <div class="dash-month">${sheetName}</div>
+
+      <div class="saldi-grid">
+        <div class="saldo-card full">
+          <div class="saldo-label">Saldo attuale</div>
+          <div class="saldo-val ${saldoAttuale>=0?'pos':'neg'}">€ ${fmt(saldoAttuale)}</div>
+          <div class="saldo-sub">Entrate registrate − Uscite registrate</div>
+        </div>
+        <div class="saldo-card">
+          <div class="saldo-label">Saldo previsto</div>
+          <div class="saldo-val ${saldoPrevisto>=0?'pos':'neg'}">${saldoPrevisto<0?'− ':''}€ ${fmt(Math.abs(saldoPrevisto))}</div>
+          <div class="saldo-sub">Dopo le mancanti</div>
+        </div>
+        <div class="saldo-card">
+          <div class="saldo-label">Ancora da pagare</div>
+          <div class="saldo-val ${totMancanti>0?'warn':'pos'}">€ ${fmt(totMancanti)}</div>
+          <div class="saldo-sub">Totale uscite mancanti</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <span class="section-label">Uscite mancanti</span>
+        <span class="section-total">− € ${fmt(totMancanti)}</span>
+      </div>
+      ${mancantiHtml}
+    `;
+  } catch(e) {
+    console.error(e);
+    c.innerHTML = `<div class="empty-state">Errore nel caricamento.<br><small>${e.message}</small></div>`;
+  }
+}
+
+// ── TOAST ─────────────────────────────────────────────────────
+function toast(msg) {
+  const t = document.createElement('div'); t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>{ t.style.transition='opacity 0.3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); },2000);
+}
+
+init();
+</script>
+</body>
+</html>
